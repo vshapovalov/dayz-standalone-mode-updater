@@ -32,11 +32,16 @@ type PathsConfig struct {
 }
 
 type SteamConfig struct {
-	APIKey         string `json:"api_key,omitempty"`
-	Login          string `json:"login"`
-	Password       string `json:"password"`
-	WorkshopGameID int    `json:"workshop_game_id"`
-	WebAPIKey      string `json:"web_api_key,omitempty"`
+	APIKey                     string `json:"api_key,omitempty"`
+	Login                      string `json:"login"`
+	Password                   string `json:"password"`
+	WorkshopGameID             int    `json:"workshop_game_id"`
+	WebAPIKey                  string `json:"web_api_key,omitempty"`
+	WorkshopHTTPTimeoutSeconds int    `json:"workshop_http_timeout_seconds"`
+	WorkshopMaxRetries         int    `json:"workshop_max_retries"`
+	WorkshopBackoffMillis      int    `json:"workshop_backoff_millis"`
+	SteamCMDRetriesPerMod      int    `json:"steamcmd_retries_per_mod"`
+	SteamCMDBackoffMillis      int    `json:"steamcmd_backoff_millis"`
 }
 
 type IntervalsConfig struct {
@@ -69,12 +74,16 @@ type ServerConfig struct {
 }
 
 type ServerSFTPConfig struct {
-	Host              string         `json:"host"`
-	Port              int            `json:"port"`
-	User              string         `json:"user"`
-	Auth              SFTPAuthConfig `json:"auth"`
-	RemoteModlistPath string         `json:"remote_modlist_path"`
-	RemoteModsRoot    string         `json:"remote_mods_root"`
+	Host                    string         `json:"host"`
+	Port                    int            `json:"port"`
+	User                    string         `json:"user"`
+	Auth                    SFTPAuthConfig `json:"auth"`
+	RemoteModlistPath       string         `json:"remote_modlist_path"`
+	RemoteModsRoot          string         `json:"remote_mods_root"`
+	ConnectTimeoutSeconds   int            `json:"connect_timeout_seconds"`
+	OperationTimeoutSeconds int            `json:"operation_timeout_seconds"`
+	MaxRetries              int            `json:"max_retries"`
+	RetryBackoffMillis      int            `json:"retry_backoff_millis"`
 }
 
 type SFTPAuthConfig struct {
@@ -156,6 +165,33 @@ func (c *Config) applyDefaults() {
 		if c.Servers[i].SFTP.RemoteModlistPath == "" {
 			c.Servers[i].SFTP.RemoteModlistPath = "/modlist.html"
 		}
+		if c.Servers[i].SFTP.ConnectTimeoutSeconds <= 0 {
+			c.Servers[i].SFTP.ConnectTimeoutSeconds = 10
+		}
+		if c.Servers[i].SFTP.OperationTimeoutSeconds <= 0 {
+			c.Servers[i].SFTP.OperationTimeoutSeconds = 30
+		}
+		if c.Servers[i].SFTP.MaxRetries <= 0 {
+			c.Servers[i].SFTP.MaxRetries = 3
+		}
+		if c.Servers[i].SFTP.RetryBackoffMillis <= 0 {
+			c.Servers[i].SFTP.RetryBackoffMillis = 500
+		}
+	}
+	if c.Steam.WorkshopHTTPTimeoutSeconds <= 0 {
+		c.Steam.WorkshopHTTPTimeoutSeconds = 20
+	}
+	if c.Steam.WorkshopMaxRetries <= 0 {
+		c.Steam.WorkshopMaxRetries = 3
+	}
+	if c.Steam.WorkshopBackoffMillis <= 0 {
+		c.Steam.WorkshopBackoffMillis = 500
+	}
+	if c.Steam.SteamCMDRetriesPerMod <= 0 {
+		c.Steam.SteamCMDRetriesPerMod = 3
+	}
+	if c.Steam.SteamCMDBackoffMillis <= 0 {
+		c.Steam.SteamCMDBackoffMillis = 1000
 	}
 }
 

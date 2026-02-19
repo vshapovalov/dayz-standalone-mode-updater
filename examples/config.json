@@ -1,15 +1,22 @@
 {
   "version": 1,
+  "state_path": "state.json",
   "paths": {
     "local_mods_root": "./mods",
     "local_cache_root": "./cache",
-    "steamcmd_path": "/usr/games/steamcmd"
+    "steamcmd_path": "/usr/games/steamcmd",
+    "steamcmd_workshop_content_root": "/home/steam/.steam/steam/steamapps/workshop/content"
   },
   "steam": {
     "login": "steam_user",
     "password": "steam_password",
     "workshop_game_id": 221100,
-    "web_api_key": ""
+    "web_api_key": "",
+    "workshop_http_timeout_seconds": 20,
+    "workshop_max_retries": 3,
+    "workshop_backoff_millis": 500,
+    "steamcmd_retries_per_mod": 3,
+    "steamcmd_backoff_millis": 1000
   },
   "intervals": {
     "modlist_poll_seconds": 60,
@@ -43,7 +50,11 @@
           "password": "sftp_password"
         },
         "remote_modlist_path": "/dayz/modlist.txt",
-        "remote_mods_root": "/dayz/mods"
+        "remote_mods_root": "/dayz/mods",
+        "connect_timeout_seconds": 10,
+        "operation_timeout_seconds": 30,
+        "max_retries": 3,
+        "retry_backoff_millis": 500
       },
       "rcon": {
         "host": "127.0.0.1",

@@ -3,6 +3,7 @@ package steamcmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -36,14 +37,13 @@ func (r *CommandRunner) UpdateMods(ctx context.Context, modIDs []string, st *sta
 	if len(modIDs) == 0 {
 		return nil, nil
 	}
-	output, err := r.runSteamCMD(ctx, modIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	results := ParseSuccessByModID(output)
 	succeeded := make([]string, 0, len(modIDs))
 	for _, id := range modIDs {
+		output, err := r.runSteamCMDWithRetry(ctx, id)
+		if err != nil {
+			return succeeded, err
+		}
+		results := ParseSuccessByModID(output)
 		if !results[id] || !r.hasDownloadedContent(id) {
 			continue
 		}
@@ -69,6 +69,26 @@ func (r *CommandRunner) UpdateMods(ctx context.Context, modIDs []string, st *sta
 		succeeded = append(succeeded, id)
 	}
 	return succeeded, nil
+}
+
+func (r *CommandRunner) runSteamCMDWithRetry(ctx context.Context, modID string) (string, error) {
+	var lastErr error
+	for attempt := 1; attempt <= r.cfg.Steam.SteamCMDRetriesPerMod; attempt++ {
+		output, err := r.runSteamCMD(ctx, []string{modID})
+		if err == nil {
+			return output, nil
+		}
+		lastErr = err
+		if attempt == r.cfg.Steam.SteamCMDRetriesPerMod || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(time.Duration(r.cfg.Steam.SteamCMDBackoffMillis*attempt) * time.Millisecond):
+		}
+	}
+	return "", fmt.Errorf("steamcmd mod %s failed after retries: %w", modID, lastErr)
 }
 
 func (r *CommandRunner) runSteamCMD(ctx context.Context, modIDs []string) (string, error) {

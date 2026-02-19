@@ -45,7 +45,7 @@ func (l *Logger) emit(level, msg string, fields map[string]any) {
 
 func sanitize(key string, value any) any {
 	k := strings.ToLower(key)
-	if strings.Contains(k, "password") {
+	if strings.Contains(k, "password") || strings.Contains(k, "passphrase") || strings.Contains(k, "secret") || strings.Contains(k, "token") || strings.Contains(k, "api_key") || strings.Contains(k, "key") {
 		return "***"
 	}
 	return value

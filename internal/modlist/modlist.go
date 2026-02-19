@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -82,14 +83,54 @@ func PollServerModlist(ctx context.Context, srv config.ServerConfig, localCacheR
 }
 
 func fetchModlistHTML(ctx context.Context, srv config.ServerConfig, localCacheRoot string) (string, string, error) {
+	var lastErr error
+	for attempt := 1; attempt <= srv.SFTP.MaxRetries; attempt++ {
+		html, cachePath, err := fetchModlistHTMLOnce(ctx, srv, localCacheRoot)
+		if err == nil {
+			return html, cachePath, nil
+		}
+		lastErr = err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || attempt == srv.SFTP.MaxRetries {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return "", "", ctx.Err()
+		case <-time.After(time.Duration(srv.SFTP.RetryBackoffMillis*attempt) * time.Millisecond):
+		}
+	}
+	return "", "", lastErr
+}
+
+func fetchModlistHTMLOnce(ctx context.Context, srv config.ServerConfig, localCacheRoot string) (string, string, error) {
+	opCtx, cancel := context.WithTimeout(ctx, time.Duration(srv.SFTP.OperationTimeoutSeconds)*time.Second)
+	defer cancel()
+
 	address := fmt.Sprintf("%s:%d", srv.SFTP.Host, srv.SFTP.Port)
 	sshConfig, err := sshConfigFromServer(srv)
 	if err != nil {
 		return "", "", err
 	}
-	conn, err := ssh.Dial("tcp", address, sshConfig)
-	if err != nil {
-		return "", "", fmt.Errorf("dial sftp ssh for server %q: %w", srv.ID, err)
+	connCh := make(chan struct {
+		conn *ssh.Client
+		err  error
+	}, 1)
+	go func() {
+		conn, err := ssh.Dial("tcp", address, sshConfig)
+		connCh <- struct {
+			conn *ssh.Client
+			err  error
+		}{conn: conn, err: err}
+	}()
+	var conn *ssh.Client
+	select {
+	case <-opCtx.Done():
+		return "", "", opCtx.Err()
+	case res := <-connCh:
+		if res.err != nil {
+			return "", "", fmt.Errorf("dial sftp ssh for server %q: %w", srv.ID, res.err)
+		}
+		conn = res.conn
 	}
 	defer conn.Close()
 	client, err := sftp.NewClient(conn)
@@ -98,36 +139,46 @@ func fetchModlistHTML(ctx context.Context, srv config.ServerConfig, localCacheRo
 	}
 	defer client.Close()
 
-	select {
-	case <-ctx.Done():
-		return "", "", ctx.Err()
-	default:
-	}
-
 	remotePath := srv.SFTP.RemoteModlistPath
 	if strings.TrimSpace(remotePath) == "" {
 		remotePath = "/modlist.html"
 	}
-	remoteFile, err := client.Open(remotePath)
-	if err != nil {
-		return "", "", fmt.Errorf("open remote modlist for server %q: %w", srv.ID, err)
+	type result struct {
+		content []byte
+		err     error
 	}
-	defer remoteFile.Close()
+	resCh := make(chan result, 1)
+	go func() {
+		remoteFile, err := client.Open(remotePath)
+		if err != nil {
+			resCh <- result{err: fmt.Errorf("open remote modlist for server %q: %w", srv.ID, err)}
+			return
+		}
+		defer remoteFile.Close()
+		content, err := io.ReadAll(remoteFile)
+		if err != nil {
+			resCh <- result{err: fmt.Errorf("read remote modlist for server %q: %w", srv.ID, err)}
+			return
+		}
+		resCh <- result{content: content}
+	}()
 
-	content, err := io.ReadAll(remoteFile)
-	if err != nil {
-		return "", "", fmt.Errorf("read remote modlist for server %q: %w", srv.ID, err)
+	select {
+	case <-opCtx.Done():
+		return "", "", opCtx.Err()
+	case res := <-resCh:
+		if res.err != nil {
+			return "", "", res.err
+		}
+		cachePath := filepath.Join(localCacheRoot, "servers", srv.ID, "modlist.html")
+		if err := os.MkdirAll(filepath.Dir(cachePath), 0o755); err != nil {
+			return "", "", fmt.Errorf("create modlist cache dir for server %q: %w", srv.ID, err)
+		}
+		if err := os.WriteFile(cachePath, res.content, 0o644); err != nil {
+			return "", "", fmt.Errorf("write cached modlist for server %q: %w", srv.ID, err)
+		}
+		return string(res.content), cachePath, nil
 	}
-
-	cachePath := filepath.Join(localCacheRoot, "servers", srv.ID, "modlist.html")
-	if err := os.MkdirAll(filepath.Dir(cachePath), 0o755); err != nil {
-		return "", "", fmt.Errorf("create modlist cache dir for server %q: %w", srv.ID, err)
-	}
-	if err := os.WriteFile(cachePath, content, 0o644); err != nil {
-		return "", "", fmt.Errorf("write cached modlist for server %q: %w", srv.ID, err)
-	}
-
-	return string(content), cachePath, nil
 }
 
 func sshConfigFromServer(srv config.ServerConfig) (*ssh.ClientConfig, error) {
