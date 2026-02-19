@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "paths": {
+    "local_mods_root": "./mods",
+    "local_cache_root": "./cache",
+    "steamcmd_path": "/usr/games/steamcmd"
+  },
+  "steam": {
+    "login": "steam_user",
+    "password": "steam_password",
+    "workshop_game_id": 221100,
+    "web_api_key": ""
+  },
+  "intervals": {
+    "modlist_poll_seconds": 60,
+    "workshop_poll_seconds": 300,
+    "rcon_tick_seconds": 5,
+    "state_flush_seconds": 15
+  },
+  "shutdown": {
+    "grace_period_seconds": 300,
+    "announce_every_seconds": 60,
+    "message_template": "Server restart in {minutes} minute(s)",
+    "final_message": "Server restarting now"
+  },
+  "concurrency": {
+    "modlist_poll_parallelism": 4,
+    "sftp_sync_parallelism_servers": 2,
+    "sftp_sync_parallelism_mods_per_server": 2,
+    "workshop_parallelism": 4,
+    "workshop_batch_size": 50
+  },
+  "servers": [
+    {
+      "id": "server-1",
+      "name": "Primary",
+      "sftp": {
+        "host": "127.0.0.1",
+        "port": 22,
+        "user": "sftp_user",
+        "auth": {
+          "type": "password",
+          "password": "sftp_password"
+        },
+        "remote_modlist_path": "/dayz/modlist.txt",
+        "remote_mods_root": "/dayz/mods"
+      },
+      "rcon": {
+        "host": "127.0.0.1",
+        "port": 2306,
+        "password": "rcon_password"
+      }
+    }
+  ]
+}

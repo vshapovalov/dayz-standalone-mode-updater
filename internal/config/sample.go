@@ -2,29 +2,57 @@ package config
 
 func Sample() Config {
 	return Config{
-		PollIntervalSeconds: 300,
-		StatePath:           "state.json",
+		Version: 1,
+		Paths: PathsConfig{
+			LocalModsRoot:  "./mods",
+			LocalCacheRoot: "./cache",
+			SteamcmdPath:   "/usr/games/steamcmd",
+		},
 		Steam: SteamConfig{
-			APIKey:   "YOUR_STEAM_API_KEY",
-			Username: "steam_user",
-			Password: "steam_password",
+			Login:          "steam_user",
+			Password:       "steam_password",
+			WorkshopGameID: defaultWorkshopGameID,
+			WebAPIKey:      "",
 		},
-		RCON: RCONConfig{
-			Address:             "127.0.0.1:2306",
-			Password:            "rcon_password",
-			PreRestartCountdown: 120,
+		Intervals: IntervalsConfig{
+			ModlistPollSeconds:  60,
+			WorkshopPollSeconds: 300,
+			RconTickSeconds:     5,
+			StateFlushSeconds:   15,
 		},
-		SFTP: SFTPConfig{
-			Address:    "127.0.0.1:2222",
-			Username:   "sftp_user",
-			Password:   "sftp_password",
-			RemoteRoot: "/upload/mods",
+		Shutdown: ShutdownConfig{
+			GracePeriodSeconds:   300,
+			AnnounceEverySeconds: 60,
+			MessageTemplate:      "Server restart in {minutes} minute(s)",
+			FinalMessage:         "Server restarting now",
 		},
-		Mods: []ModConfig{{
-			ID:        "1559212036",
-			Name:      "CF",
-			LocalPath: "./mods/1559212036",
-			RemoteDir: "cf",
+		Concurrency: ConcurrencyConfig{
+			ModlistPollParallelism:           4,
+			SFTPSyncParallelismServers:       2,
+			SFTPSyncParallelismModsPerServer: 2,
+			WorkshopParallelism:              4,
+			WorkshopBatchSize:                50,
+		},
+		Servers: []ServerConfig{{
+			ID:   "server-1",
+			Name: "Primary",
+			SFTP: ServerSFTPConfig{
+				Host: "127.0.0.1",
+				Port: 22,
+				User: "sftp_user",
+				Auth: SFTPAuthConfig{
+					Type:     "password",
+					Password: "sftp_password",
+				},
+				RemoteModlistPath: "/dayz/modlist.txt",
+				RemoteModsRoot:    "/dayz/mods",
+			},
+			RCON: ServerRCONConfig{
+				Host:     "127.0.0.1",
+				Port:     2306,
+				Password: "rcon_password",
+			},
 		}},
+		StatePath: "state.json",
 	}
 }

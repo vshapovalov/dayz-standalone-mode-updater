@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "updated_at": "2026-01-01T00:00:00Z",
+  "mods": {
+    "1559212036": {
+      "display_name": "CF",
+      "folder_slug": "cf",
+      "workshop_updated_at": "2026-01-01T00:00:00Z",
+      "last_workshop_check_at": "2026-01-01T00:00:00Z",
+      "local_updated_at": "2026-01-01T00:00:00Z"
+    }
+  },
+  "servers": {
+    "server-1": {
+      "last_mod_ids": ["1559212036"],
+      "last_modset_hash": "sha256:example",
+      "needs_mod_update": false,
+      "needs_shutdown": false,
+      "stage": "idle",
+      "synced_mods": {
+        "1559212036": "2026-01-01T00:00:00Z"
+      },
+      "shutdown_deadline_at": null,
+      "next_announce_at": null,
+      "last_error": "",
+      "last_error_stage": "",
+      "last_error_at": null,
+      "last_success_sync_at": "2026-01-01T00:00:00Z",
+      "shutdown_sent_at": null
+    }
+  }
+}
