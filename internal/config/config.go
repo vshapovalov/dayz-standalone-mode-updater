@@ -25,9 +25,10 @@ type Config struct {
 }
 
 type PathsConfig struct {
-	LocalModsRoot  string `json:"local_mods_root"`
-	LocalCacheRoot string `json:"local_cache_root"`
-	SteamcmdPath   string `json:"steamcmd_path"`
+	LocalModsRoot               string `json:"local_mods_root"`
+	LocalCacheRoot              string `json:"local_cache_root"`
+	SteamcmdPath                string `json:"steamcmd_path"`
+	SteamcmdWorkshopContentRoot string `json:"steamcmd_workshop_content_root"`
 }
 
 type SteamConfig struct {
@@ -159,8 +160,8 @@ func (c *Config) applyDefaults() {
 }
 
 func (c Config) Validate() error {
-	if c.Paths.LocalModsRoot == "" || c.Paths.LocalCacheRoot == "" || c.Paths.SteamcmdPath == "" {
-		return fmt.Errorf("paths.local_mods_root, paths.local_cache_root, and paths.steamcmd_path are required")
+	if c.Paths.LocalModsRoot == "" || c.Paths.LocalCacheRoot == "" || c.Paths.SteamcmdPath == "" || c.Paths.SteamcmdWorkshopContentRoot == "" {
+		return fmt.Errorf("paths.local_mods_root, paths.local_cache_root, paths.steamcmd_path, and paths.steamcmd_workshop_content_root are required")
 	}
 	if c.Steam.Login == "" || c.Steam.Password == "" {
 		return fmt.Errorf("steam.login and steam.password are required")
