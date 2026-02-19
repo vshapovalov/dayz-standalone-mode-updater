@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -20,7 +21,8 @@ import (
 )
 
 type Engine struct {
-	now func() time.Time
+	now    func() time.Time
+	logger *slog.Logger
 }
 
 type treeEntry struct {
@@ -40,7 +42,14 @@ type syncPlan struct {
 }
 
 func NewEngine() *Engine {
-	return &Engine{now: func() time.Time { return time.Now().UTC() }}
+	return &Engine{now: func() time.Time { return time.Now().UTC() }, logger: slog.Default()}
+}
+
+func (e *Engine) WithLogger(logger *slog.Logger) *Engine {
+	if logger != nil {
+		e.logger = logger
+	}
+	return e
 }
 
 func (e *Engine) SyncServers(ctx context.Context, cfg config.Config, st *state.State) error {
@@ -123,13 +132,16 @@ func (e *Engine) syncServer(ctx context.Context, cfg config.Config, server confi
 		return srv, nil
 	}
 
-	client, sshClient, err := dialSFTP(server)
+	connectStart := time.Now()
+	client, sshClient, err := dialSFTP(ctx, server)
 	if err != nil {
 		srv.Stage = state.StageError
 		srv.NeedsModUpdate = true
 		recordSyncError(&srv, "connect", "connect sftp", "", err, e.now)
+		e.logger.Error("sftp connect failed", "server_id", server.ID, "stage", "connect", "duration_ms", time.Since(connectStart).Milliseconds(), "error", err)
 		return srv, err
 	}
+	e.logger.Info("sftp connect ok", "server_id", server.ID, "stage", "connect", "duration_ms", time.Since(connectStart).Milliseconds())
 	defer sshClient.Close()
 	defer client.Close()
 
@@ -152,13 +164,19 @@ func (e *Engine) syncServer(ctx context.Context, cfg config.Config, server confi
 
 			local := filepath.Join(cfg.Paths.LocalModsRoot, mod.FolderSlug)
 			remote := path.Join(server.SFTP.RemoteModsRoot, mod.FolderSlug)
-			if err := syncMod(ctx, client, local, remote); err != nil {
+			start := time.Now()
+			modCtx, cancel := context.WithTimeout(ctx, time.Duration(server.SFTP.OperationTimeoutSeconds)*time.Second)
+			defer cancel()
+			plan, err := syncMod(modCtx, client, local, remote)
+			if err != nil {
 				mu.Lock()
 				hadFailure = true
 				recordSyncError(&srv, "sync_mod", "sync mod", id, err, e.now)
 				mu.Unlock()
+				e.logger.Error("sftp sync mod failed", "server_id", server.ID, "mod_id", id, "stage", "sync_mod", "duration_ms", time.Since(start).Milliseconds(), "error", err)
 				return
 			}
+			e.logger.Info("sftp sync mod completed", "server_id", server.ID, "mod_id", id, "stage", "sync_mod", "duration_ms", time.Since(start).Milliseconds(), "mkdir_count", len(plan.mkdirs), "upload_count", len(plan.uploads), "delete_count", len(plan.deleteTypeConflicts)+len(plan.deleteExtrasFiles)+len(plan.deleteExtrasDirs))
 			mu.Lock()
 			srv.SyncedMods[id] = mod.LocalUpdatedAt
 			mu.Unlock()
@@ -193,48 +211,48 @@ func recordSyncError(srv *state.ServerState, stage, step, modID string, err erro
 	srv.LastErrorAt = &now
 }
 
-func syncMod(ctx context.Context, client *sftp.Client, localModPath, remoteModPath string) error {
+func syncMod(ctx context.Context, client *sftp.Client, localModPath, remoteModPath string) (syncPlan, error) {
 	localTree, err := buildLocalTree(localModPath)
 	if err != nil {
-		return fmt.Errorf("build local tree: %w", err)
+		return syncPlan{}, fmt.Errorf("build local tree: %w", err)
 	}
 	remoteTree, err := buildRemoteTree(client, remoteModPath)
 	if err != nil {
-		return fmt.Errorf("build remote tree: %w", err)
+		return syncPlan{}, fmt.Errorf("build remote tree: %w", err)
 	}
 	plan := buildPlan(localTree, remoteTree)
 
 	for _, entry := range plan.deleteTypeConflicts {
 		if err := deleteRemoteEntry(client, path.Join(remoteModPath, entry.Path), entry.IsDir); err != nil {
-			return fmt.Errorf("delete type conflict %s: %w", entry.Path, err)
+			return plan, fmt.Errorf("delete type conflict %s: %w", entry.Path, err)
 		}
 	}
 	for _, dir := range plan.mkdirs {
 		if err := client.MkdirAll(path.Join(remoteModPath, dir.Path)); err != nil {
-			return fmt.Errorf("mkdir %s: %w", dir.Path, err)
+			return plan, fmt.Errorf("mkdir %s: %w", dir.Path, err)
 		}
 	}
 	for _, file := range plan.uploads {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return plan, ctx.Err()
 		default:
 		}
 		if err := uploadAtomically(client, filepath.Join(localModPath, filepath.FromSlash(file.Path)), path.Join(remoteModPath, file.Path), file.ModTime); err != nil {
-			return fmt.Errorf("upload %s: %w", file.Path, err)
+			return plan, fmt.Errorf("upload %s: %w", file.Path, err)
 		}
 	}
 	for _, file := range plan.deleteExtrasFiles {
 		if err := client.Remove(path.Join(remoteModPath, file.Path)); err != nil {
-			return fmt.Errorf("delete extra file %s: %w", file.Path, err)
+			return plan, fmt.Errorf("delete extra file %s: %w", file.Path, err)
 		}
 	}
 	for _, dir := range plan.deleteExtrasDirs {
 		if err := client.RemoveDirectory(path.Join(remoteModPath, dir.Path)); err != nil {
-			return fmt.Errorf("delete extra dir %s: %w", dir.Path, err)
+			return plan, fmt.Errorf("delete extra dir %s: %w", dir.Path, err)
 		}
 	}
-	return nil
+	return plan, nil
 }
 
 func deleteRemoteEntry(client *sftp.Client, fullPath string, isDir bool) error {
@@ -394,7 +412,7 @@ func pathDepth(p string) int {
 	return strings.Count(p, "/") + 1
 }
 
-func dialSFTP(server config.ServerConfig) (*sftp.Client, *ssh.Client, error) {
+func dialSFTP(ctx context.Context, server config.ServerConfig) (*sftp.Client, *ssh.Client, error) {
 	sshConfig := &ssh.ClientConfig{User: server.SFTP.User, HostKeyCallback: ssh.InsecureIgnoreHostKey()}
 	switch server.SFTP.Auth.Type {
 	case "password":
@@ -403,14 +421,45 @@ func dialSFTP(server config.ServerConfig) (*sftp.Client, *ssh.Client, error) {
 		return nil, nil, fmt.Errorf("unsupported sftp auth type %q", server.SFTP.Auth.Type)
 	}
 	addr := fmt.Sprintf("%s:%d", server.SFTP.Host, server.SFTP.Port)
-	sshConn, err := ssh.Dial("tcp", addr, sshConfig)
-	if err != nil {
-		return nil, nil, err
+	var lastErr error
+	for attempt := 1; attempt <= server.SFTP.MaxRetries; attempt++ {
+		connCh := make(chan struct {
+			conn *ssh.Client
+			err  error
+		}, 1)
+		go func() {
+			conn, err := ssh.Dial("tcp", addr, sshConfig)
+			connCh <- struct {
+				conn *ssh.Client
+				err  error
+			}{conn: conn, err: err}
+		}()
+		select {
+		case <-time.After(time.Duration(server.SFTP.ConnectTimeoutSeconds) * time.Second):
+			lastErr = fmt.Errorf("sftp connect timed out")
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case res := <-connCh:
+			if res.err != nil {
+				lastErr = res.err
+			} else {
+				client, err := sftp.NewClient(res.conn)
+				if err != nil {
+					res.conn.Close()
+					lastErr = err
+				} else {
+					return client, res.conn, nil
+				}
+			}
+		}
+		if attempt == server.SFTP.MaxRetries {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case <-time.After(time.Duration(server.SFTP.RetryBackoffMillis*attempt) * time.Millisecond):
+		}
 	}
-	client, err := sftp.NewClient(sshConn)
-	if err != nil {
-		sshConn.Close()
-		return nil, nil, err
-	}
-	return client, sshConn, nil
+	return nil, nil, lastErr
 }

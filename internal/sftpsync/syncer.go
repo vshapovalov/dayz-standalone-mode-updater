@@ -34,7 +34,7 @@ func (s *Syncer) SyncDirectory(ctx context.Context, localDir, remoteDir string) 
 	}
 	defer client.Close()
 
-	if err := syncMod(ctx, client, localDir, remoteDir); err != nil {
+	if _, err := syncMod(ctx, client, localDir, remoteDir); err != nil {
 		return fmt.Errorf("sync directory: %w", err)
 	}
 	return nil

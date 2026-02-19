@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -30,13 +31,26 @@ type WebAPIClient struct {
 	httpClient *http.Client
 	apiKey     string
 	endpoint   string
+	maxRetries int
+	backoff    time.Duration
 }
 
-func NewWebAPIClient(apiKey string) *WebAPIClient {
+func NewWebAPIClient(apiKey string, timeout time.Duration, maxRetries int, backoff time.Duration) *WebAPIClient {
+	if timeout <= 0 {
+		timeout = 20 * time.Second
+	}
+	if maxRetries <= 0 {
+		maxRetries = 3
+	}
+	if backoff <= 0 {
+		backoff = 500 * time.Millisecond
+	}
 	return &WebAPIClient{
-		httpClient: &http.Client{Timeout: 20 * time.Second},
+		httpClient: &http.Client{Timeout: timeout},
 		apiKey:     apiKey,
 		endpoint:   "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/",
+		maxRetries: maxRetries,
+		backoff:    backoff,
 	}
 }
 
@@ -54,22 +68,46 @@ func (c *WebAPIClient) FetchMetadata(ctx context.Context, modIDs []string) (map[
 		vals.Set(fmt.Sprintf("publishedfileids[%d]", i), id)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewBufferString(vals.Encode()))
-	if err != nil {
-		return nil, fmt.Errorf("create workshop request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	var lastErr error
+	for attempt := 1; attempt <= c.maxRetries; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewBufferString(vals.Encode()))
+		if err != nil {
+			return nil, fmt.Errorf("create workshop request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request workshop metadata: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("workshop api returned status %d", resp.StatusCode)
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("request workshop metadata: %w", err)
+		} else {
+			if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+				lastErr = fmt.Errorf("workshop api returned status %d", resp.StatusCode)
+				resp.Body.Close()
+			} else if resp.StatusCode >= 300 {
+				err := fmt.Errorf("workshop api returned status %d", resp.StatusCode)
+				resp.Body.Close()
+				return nil, err
+			} else {
+				meta, err := parseMetadataResponse(resp)
+				resp.Body.Close()
+				if err != nil {
+					return nil, err
+				}
+				return meta, nil
+			}
+		}
+
+		if attempt == c.maxRetries || errors.Is(lastErr, context.Canceled) || errors.Is(lastErr, context.DeadlineExceeded) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(c.backoff * time.Duration(attempt)):
+		}
 	}
 
-	return parseMetadataResponse(resp)
+	return nil, lastErr
 }
 
 func PollMetadata(ctx context.Context, cfg config.Config, st *state.State, client Client, now time.Time) ([]string, error) {

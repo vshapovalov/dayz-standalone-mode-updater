@@ -48,7 +48,7 @@ func New(cfg config.Config, logger logging.Logger) *Orchestrator {
 		cfg:         cfg,
 		store:       state.NewFileStore(cfg.StatePath),
 		logger:      logger,
-		workshop:    workshop.NewWebAPIClient(cfg.Steam.WebAPIKey),
+		workshop:    workshop.NewWebAPIClient(cfg.Steam.WebAPIKey, time.Duration(cfg.Steam.WorkshopHTTPTimeoutSeconds)*time.Second, cfg.Steam.WorkshopMaxRetries, time.Duration(cfg.Steam.WorkshopBackoffMillis)*time.Millisecond),
 		steam:       steamcmd.NewRunner(cfg),
 		sync:        sftpsync.NewEngine(),
 		rcon:        rcon.NewController(cfg),
