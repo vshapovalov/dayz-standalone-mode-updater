@@ -151,6 +151,11 @@ func (c *Config) applyDefaults() {
 	if c.Intervals.StateFlushSeconds <= 0 {
 		c.Intervals.StateFlushSeconds = 15
 	}
+	for i := range c.Servers {
+		if c.Servers[i].SFTP.RemoteModlistPath == "" {
+			c.Servers[i].SFTP.RemoteModlistPath = "/modlist.html"
+		}
+	}
 }
 
 func (c Config) Validate() error {
@@ -170,7 +175,8 @@ func (c Config) Validate() error {
 		return fmt.Errorf("at least one server is required")
 	}
 	seen := make(map[string]struct{}, len(c.Servers))
-	for i, srv := range c.Servers {
+	for i := range c.Servers {
+		srv := c.Servers[i]
 		if srv.ID == "" || srv.Name == "" {
 			return fmt.Errorf("servers[%d].id and servers[%d].name are required", i, i)
 		}
