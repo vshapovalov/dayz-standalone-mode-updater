@@ -1,0 +1,28 @@
+{
+  "poll_interval_seconds": 300,
+  "state_path": "state.json",
+  "steam": {
+    "api_key": "REPLACE_ME",
+    "username": "steam_user",
+    "password": "steam_password"
+  },
+  "rcon": {
+    "address": "127.0.0.1:2306",
+    "password": "rcon_password",
+    "pre_restart_countdown_seconds": 120
+  },
+  "sftp": {
+    "address": "127.0.0.1:2222",
+    "username": "foo",
+    "password": "pass",
+    "remote_root": "/upload/mods"
+  },
+  "mods": [
+    {
+      "id": "1559212036",
+      "name": "CF",
+      "local_path": "./mods/1559212036",
+      "remote_dir": "cf"
+    }
+  ]
+}
