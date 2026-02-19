@@ -1,6 +1,7 @@
 package sftp
 
 import (
+	"bytes"
 	"io"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,11 @@ func (c *Client) MkdirAll(path string) error {
 func (c *Client) Create(path string) (io.WriteCloser, error) {
 	_ = path
 	return nopWriteCloser{}, nil
+}
+
+func (c *Client) Open(path string) (io.ReadCloser, error) {
+	_ = path
+	return io.NopCloser(bytes.NewReader(nil)), nil
 }
 
 type nopWriteCloser struct{}

@@ -6,6 +6,8 @@ type AuthMethod interface{}
 
 type PublicKey interface{}
 
+type Signer interface{}
+
 type HostKeyCallback func(hostname string, remote net.Addr, key PublicKey) error
 
 type ClientConfig struct {
@@ -18,6 +20,18 @@ type Client struct{}
 
 func Password(password string) AuthMethod {
 	return password
+}
+
+func PublicKeys(signers ...Signer) AuthMethod {
+	return signers
+}
+
+func ParsePrivateKey(_ []byte) (Signer, error) {
+	return struct{}{}, nil
+}
+
+func ParsePrivateKeyWithPassphrase(_ []byte, _ []byte) (Signer, error) {
+	return struct{}{}, nil
 }
 
 func InsecureIgnoreHostKey() HostKeyCallback {
