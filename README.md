@@ -2,6 +2,15 @@
 
 Daemon for polling DayZ server modlists, checking Steam Workshop updates, downloading mods with SteamCMD, and syncing to servers over SFTP.
 
+## Documentation
+
+- Project technical context: [`docs/TECH_CONTEXT.md`](docs/TECH_CONTEXT.md)
+- Documentation index: [`docs/README.md`](docs/README.md)
+
+## Codex task logs
+
+All Codex task prompts are logged under [`tasks/`](tasks/) as `task_{N}.md`.
+
 ## Quickstart
 
 ```bash
