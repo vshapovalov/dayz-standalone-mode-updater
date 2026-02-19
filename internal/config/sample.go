@@ -4,9 +4,10 @@ func Sample() Config {
 	return Config{
 		Version: 1,
 		Paths: PathsConfig{
-			LocalModsRoot:  "./mods",
-			LocalCacheRoot: "./cache",
-			SteamcmdPath:   "/usr/games/steamcmd",
+			LocalModsRoot:               "./mods",
+			LocalCacheRoot:              "./cache",
+			SteamcmdPath:                "/usr/games/steamcmd",
+			SteamcmdWorkshopContentRoot: "/home/steam/.steam/steam/steamapps/workshop/content",
 		},
 		Steam: SteamConfig{
 			Login:          "steam_user",
