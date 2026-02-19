@@ -92,6 +92,7 @@ func (e *Engine) syncServer(ctx context.Context, cfg config.Config, server confi
 	if srv.SyncedMods == nil {
 		srv.SyncedMods = map[string]time.Time{}
 	}
+	srv.Stage = state.StageSyncing
 	modsToSync := make([]string, 0, len(srv.LastModIDs))
 	for _, id := range srv.LastModIDs {
 		mod, ok := mods[id]

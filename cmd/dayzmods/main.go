@@ -49,15 +49,10 @@ func newRunCmd() *cobra.Command {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			st, err := state.Load(cfg.StatePath)
-			if err != nil {
-				return fmt.Errorf("load state: %w", err)
-			}
-
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
-			orch := orchestrator.New(cfg, st, logger)
+			orch := orchestrator.New(cfg, logger)
 			return orch.Run(ctx)
 		},
 	}
